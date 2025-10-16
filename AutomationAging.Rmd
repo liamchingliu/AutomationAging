@@ -1,0 +1,469 @@
+---
+title: "AutomationAging"
+author: "Larry Liu"
+date: "10/24/2021"
+output: pdf_document
+---
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(purrr)
+library(readxl)
+library(stargazer)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(lme4)
+library(ggplot2)
+setwd("~/Documents/ResearchProjects/AutomationAging")
+```
+
+```{r}
+##load data
+automationdata<-read.csv("Gmyrek_Berg_Bescond - ISCO 4digit scores.csv")
+occupationage<-read_excel("OccupationAge.xlsx")
+occupationracegender<-read_excel("OccupationRaceGender.xlsx")
+occupationwage<-read_excel("OccupationWage.xlsx")
+crosswalk<-read_excel("isco_soc_crosswalk1.xlsx")
+
+##See how much emptyness in each dataframe
+occupationracegender<-as.data.frame(occupationracegender)
+occupationracegender<-occupationracegender%>%
+  mutate(womenpct=ifelse(womenpct %in% "–",NA,womenpct),
+         whitepct=ifelse(whitepct %in% "–",NA,whitepct),
+         blackpct=ifelse(blackpct %in% "–",NA,blackpct),
+         asianpct=ifelse(asianpct %in% "–",NA,asianpct),
+         hispanicpct=ifelse(hispanicpct %in% "–",NA,hispanicpct))
+na_percent <- function(x) {
+  sum(is.na(x) | x == "") / length(x) * 100
+}
+occracegen <- sapply(occupationracegender, na_percent)
+print(occracegen)
+
+##count how many unique occupations there are
+uniqueocc<-occupationage%>%
+  filter(!grepl("occupations", occupation, ignore.case = TRUE))%>%
+  filter(!grepl("Total", occupation, ignore.case = TRUE))%>%
+  filter(!is.na(occupation))
+dim(uniqueocc)##562 unique occupations in BLS
+##automationdata has 436 unique occupations
+```
+
+## Data cleaning
+
+```{r}
+##remove duplicate totalemp column
+occupationage<-occupationage%>%select(-totalemp)
+##merge occupationdata
+occupationdata<-full_join(occupationage, occupationracegender, by="occupation")
+occupationdata<-left_join(occupationdata,occupationwage, by= "occupation")
+##drop all NA observations
+occupationdata<-occupationdata %>% filter(rowSums(!is.na(.)) > 0)
+
+##crosswalk: change soctitle to title case
+crosswalk<-crosswalk%>%
+  mutate(occupation=str_to_sentence(soctitle))%>%
+  select(-part, -...6)
+##merge crosswalk and occupationage
+occupationdata<-left_join(occupationdata,crosswalk, by="occupation")
+
+##Some more cleanup: fill isco values manually
+occupationdata[24,"isco"]<-"3339"
+occupationdata[38,"isco"]<-"1341"
+occupationdata[41,"isco"]<-"1219"
+occupationdata[42,"isco"]<-"3435"
+occupationdata[51,"isco"]<-"5169"
+occupationdata[64,"isco"]<-"3315"
+occupationdata[69,"isco"]<-"1212"
+occupationdata[74,"isco"]<-"3332"
+occupationdata[82,"isco"]<-"3315"
+occupationdata[85,"isco"]<-"2412"
+occupationdata[89,"isco"]<-"3312"
+occupationdata[92,"isco"]<-"3339"
+occupationdata[99,"isco"]<-"2512"
+occupationdata[100,"isco"]<-"2519"
+occupationdata[103,"isco"]<-"3514"
+occupationdata[104,"isco"]<-"3512"
+occupationdata[105,"isco"]<-"2521"
+occupationdata[119,"isco"]<-"2165"
+occupationdata[122,"isco"]<-"2149"
+occupationdata[126,"isco"]<-"2151"
+occupationdata[128,"isco"]<-"2141"
+occupationdata[138,"isco"]<-"3118"
+occupationdata[139,"isco"]<-"3113"
+occupationdata[140,"isco"]<-"3115"
+occupationdata[143,"isco"]<-"3142"
+occupationdata[144,"isco"]<-"2131"
+occupationdata[145,"isco"]<-"2131"
+occupationdata[146,"isco"]<-"2131"
+occupationdata[148,"isco"]<-"2111"
+occupationdata[150,"isco"]<-"2113"
+occupationdata[152,"isco"]<-"2114"
+occupationdata[156,"isco"]<-"2634"
+occupationdata[157,"isco"]<-"2634"
+occupationdata[158,"isco"]<-"2634"
+occupationdata[161,"isco"]<-"2632"
+occupationdata[165,"isco"]<-"3141"
+occupationdata[168,"isco"]<-"3119"
+occupationdata[169,"isco"]<-"2263"
+occupationdata[172,"isco"]<-"2359"
+occupationdata[183,"isco"]<-"2635"
+occupationdata[190,"isco"]<-"2612"
+occupationdata[195,"isco"]<-"2310"
+occupationdata[196,"isco"]<-"2342"
+occupationdata[197,"isco"]<-"2341"
+occupationdata[198,"isco"]<-"2330"
+occupationdata[199,"isco"]<-"2352"
+occupationdata[200,"isco"]<-"2353"
+occupationdata[201,"isco"]<-"2359"
+occupationdata[202,"isco"]<-"2621"
+occupationdata[203,"isco"]<-"2622"
+occupationdata[206,"isco"]<-"5312"
+occupationdata[207,"isco"]<-"2359"
+occupationdata[209,"isco"]<-"2651"
+occupationdata[216,"isco"]<-"2163"
+occupationdata[222,"isco"]<-"2653"
+occupationdata[225,"isco"]<-"2659"
+occupationdata[229,"isco"]<-"2656"
+occupationdata[230,"isco"]<-"2642"
+occupationdata[238,"isco"]<-"3343"
+occupationdata[240,"isco"]<-"3521"
+occupationdata[242,"isco"]<-"3521"
+occupationdata[247,"isco"]<-"2261"
+occupationdata[251,"isco"]<-"2211"
+occupationdata[252,"isco"]<-"2269"
+occupationdata[253,"isco"]<-"2212"
+occupationdata[271,"isco"]<-"2269"
+occupationdata[272,"isco"]<-"2230"
+occupationdata[273,"isco"]<-"3212"
+occupationdata[277,"isco"]<-"3211"
+occupationdata[279,"isco"]<-"3211"
+occupationdata[280,"isco"]<-"3258"
+occupationdata[281,"isco"]<-"3258"
+occupationdata[286,"isco"]<-"3259"
+occupationdata[288,"isco"]<-"3252"
+occupationdata[290,"isco"]<-"3259"
+occupationdata[291,"isco"]<-"3259"
+occupationdata[299,"isco"]<-"5329"
+occupationdata[300,"isco"]<-"3259"
+occupationdata[301,"isco"]<-"3255"
+occupationdata[311,"isco"]<-"3259"
+occupationdata[317,"isco"]<-"5411"
+occupationdata[318,"isco"]<-"5414"
+occupationdata[322,"isco"]<-"3112"
+occupationdata[328,"isco"]<-"5412"
+occupationdata[331,"isco"]<-"5414"
+occupationdata[332,"isco"]<-"5419"
+occupationdata[334,"isco"]<-"5419"
+occupationdata[335,"isco"]<-"5419"
+occupationdata[340,"isco"]<-"5120"
+occupationdata[343,"isco"]<-"5246"
+occupationdata[355,"isco"]<-"6113"
+occupationdata[356,"isco"]<-"5153"
+occupationdata[362,"isco"]<-"9129"
+occupationdata[364,"isco"]<-"5169"
+occupationdata[366,"isco"]<-"5164"
+occupationdata[367,"isco"]<-"4212"
+occupationdata[369,"isco"]<-"3435"
+occupationdata[370,"isco"]<-"5163"
+occupationdata[371,"isco"]<-"5163"
+occupationdata[377,"isco"]<-"5142"
+occupationdata[378,"isco"]<-"9621"
+occupationdata[379,"isco"]<-"5113"
+occupationdata[381,"isco"]<-"3423"
+occupationdata[410,"isco"]<-"3322"
+occupationdata[411,"isco"]<-"3322"
+occupationdata[412,"isco"]<-"5242"
+occupationdata[413,"isco"]<-"3334"
+occupationdata[432,"isco"]<-"4212"
+occupationdata[446,"isco"]<-"4415"
+occupationdata[466,"isco"]<-"5419"
+occupationdata[474,"isco"]<-"3331"
+occupationdata[477,"isco"]<-"3342"
+occupationdata[478,"isco"]<-"3344"
+occupationdata[517,"isco"]<-"9213"
+occupationdata[518,"isco"]<-"6340"
+occupationdata[521,"isco"]<-"6210"
+occupationdata[526,"isco"]<-"7112"
+occupationdata[528,"isco"]<-"7122"
+occupationdata[529,"isco"]<-"7114"
+occupationdata[531,"isco"]<-"8342"
+occupationdata[532,"isco"]<-"7123"
+occupationdata[535,"isco"]<-"7124"
+occupationdata[536,"isco"]<-"7131"
+occupationdata[546,"isco"]<-"9313"
+occupationdata[548,"isco"]<-"7412"
+occupationdata[554,"isco"]<-"9313"
+occupationdata[555,"isco"]<-"8113"
+occupationdata[556,"isco"]<-"8111"
+occupationdata[560,"isco"]<-"8111"
+occupationdata[562,"isco"]<-"9311"
+occupationdata[577,"isco"]<-"7422"
+occupationdata[583,"isco"]<-"7421"
+occupationdata[586,"isco"]<-"3521"
+occupationdata[593,"isco"]<-"7233"
+occupationdata[594,"isco"]<-"7231"
+occupationdata[595,"isco"]<-"7231"
+occupationdata[596,"isco"]<-"7412"
+occupationdata[599,"isco"]<-"7233"
+occupationdata[605,"isco"]<-"7311"
+occupationdata[613,"isco"]<-"9622"
+occupationdata[620,"isco"]<-"8212"
+occupationdata[623,"isco"]<-"8219"
+occupationdata[625,"isco"]<-"7511"
+occupationdata[634,"isco"]<-"3139"
+occupationdata[635,"isco"]<-"8141"
+occupationdata[640,"isco"]<-"7223"
+occupationdata[642,"isco"]<-"3135"
+occupationdata[643,"isco"]<-"7222"
+occupationdata[644,"isco"]<-"7211"
+occupationdata[646,"isco"]<-"7212"
+occupationdata[647,"isco"]<-"7223"
+occupationdata[654,"isco"]<-"7318"
+occupationdata[655,"isco"]<-"7531"
+occupationdata[656,"isco"]<-"8152"
+occupationdata[658,"isco"]<-"8159"
+occupationdata[663,"isco"]<-"7317"
+occupationdata[664,"isco"]<-"3131"
+occupationdata[667,"isco"]<-"3132"
+occupationdata[668,"isco"]<-"8131"
+occupationdata[669,"isco"]<-"8112"
+occupationdata[670,"isco"]<-"8114"
+occupationdata[680,"isco"]<-"3214"
+occupationdata[682,"isco"]<-"7316"
+occupationdata[699,"isco"]<-"9329"
+occupationdata[700,"isco"]<-"9329"
+occupationdata[702,"isco"]<-"8332"
+occupationdata[703,"isco"]<-"3153"
+occupationdata[704,"isco"]<-"3154"
+occupationdata[707,"isco"]<-"8331"
+occupationdata[709,"isco"]<-"8322"
+occupationdata[710,"isco"]<-"8322"
+occupationdata[711,"isco"]<-"8322"
+occupationdata[713,"isco"]<-"8311"
+occupationdata[715,"isco"]<-"8312"
+occupationdata[717,"isco"]<-"3152"
+occupationdata[719,"isco"]<-"9629"
+occupationdata[720,"isco"]<-"5111"
+occupationdata[722,"isco"]<-"5111"
+occupationdata[723,"isco"]<-"9331"
+occupationdata[725,"isco"]<-"8343"
+occupationdata[734,"isco"]<-"9333"
+occupationdata[735,"isco"]<-"3132"
+occupationdata[738,"isco"]<-"9332"
+
+##Remove "occupations" in occupation variable
+occupationdata<-occupationdata%>%
+  filter(!grepl("occupations", occupation, ignore.case = TRUE))%>%
+  filter(!grepl("Total", occupation, ignore.case = TRUE))%>%
+  mutate(isco=as.numeric(isco))
+
+##convert to numeric
+automationdata<-automationdata%>%mutate(isco=as.numeric(isco))
+##merge occupation/ automationdata
+occupationdata1<-left_join(occupationdata,automationdata,by="isco")
+
+##check occupationtitles
+occtitle<-occupationdata%>%select(occupation, soctitle)
+write.csv(occtitle, "occtitle.csv")
+
+##convert some variables fron chr to num
+occupationdata1<-occupationdata1%>%
+  mutate(medianage=as.numeric(medianage),
+         womenpct=as.numeric(womenpct),
+         whitepct=as.numeric(whitepct),
+         blackpct=as.numeric(blackpct),
+         asianpct=as.numeric(asianpct),
+         hispanicpct=as.numeric(hispanicpct),
+         medianwagefull=as.numeric(medianwagefull),
+         plus55pct=100*(y5564+y65plus)/(y1619+y2024+y2534+y3544+y4554+y5564+y65plus),
+         mean_score100=mean_score*100,
+         highexposure=ifelse(mean_exposure_level %in% c("Medium","High"),1,0),
+         description_1d=ifelse(description_1d=="Plant and machine operators, and assemblers,","Plant and machine operators, and assemblers",description_1d))
+
+##descriptive statistics
+descriptive<-occupationdata1%>%
+  select(mean_score100, highexposure,medianage,plus55pct,
+         womenpct,whitepct,blackpct,asianpct,
+         hispanicpct,medianwagefull,totalempfull)
+descriptive<-as.data.frame(descriptive)
+
+##check NAs
+na_percent <- function(df, vars) {
+  sapply(df[vars], function(x) mean(is.na(x)) * 100)
+}
+missingdf<-na_percent(occupationdata1,c("mean_score100", "highexposure", "medianage", "plus55pct",
+  "womenpct", "whitepct", "blackpct", "asianpct",
+  "hispanicpct", "medianwagefull", "totalempfull"))
+missingdf<-as.data.frame(missingdf)
+
+##subset to description_1d variables
+detailoccdata<-occupationdata1%>%
+  filter(!is.na(description_1d))%>%
+  group_by(description_1d)%>%
+  summarize(mean_score100=mean(mean_score100, na.rm=TRUE),
+            medianage=mean(medianage, na.rm=TRUE))%>%
+  mutate(description=case_when(
+    description_1d=="Clerical support workers" ~ "Clerical support",
+    description_1d=="Craft and related trades workers" ~ "Craft, trades",
+    description_1d=="Elementary occupations" ~ "Elementary",
+    description_1d=="Plant and machine operators, and assemblers" ~ "Plant, machine op",
+    description_1d=="Service and sales workers" ~ "Service, sales",
+    description_1d=="Skilled agricultural, forestry and fishery workers" ~ "Skilled agricultural",
+    description_1d=="Technicians and associate professionals"~ "Technicians",
+    TRUE ~ description_1d
+  ))
+```
+
+```{r}
+##Correlation Plot, Age and Automation
+ggplot(data=detailoccdata, aes(x = mean_score100, y = medianage))+
+  geom_text(aes(label=description), size=3)+
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(title = "Correlation Plot, Age and Automation, r=-0.03",
+       x = "Automation Score",
+       y = "Median Age") +
+  theme_minimal()
+cor(detailoccdata$mean_score100, detailoccdata$medianage, method="pearson")
+
+corplot<-ggplot(data=occupationdata1, aes(x = mean_score100, y = medianage))+
+  geom_point(size = 0.5)+
+  labs(title = "Correlation Plot, Age and Automation, r=0.14",
+       x = "Automation Score",
+       y = "Median Age") +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  theme_minimal()
+cor(occupationdata1$mean_score100, occupationdata1$medianage, method="pearson", use = "complete.obs")
+ggsave(filename="corplot.png", corplot, width=10, height=7)
+```
+
+
+## Regression Analysis
+
+```{r}
+##base model
+reg1<-lm(mean_score100~medianage,data=occupationdata1)
+reg2<-lm(mean_score100~plus55pct,data=occupationdata1)
+reg3<-glm(highexposure~medianage,data=occupationdata1,
+          family=binomial)
+reg4<-glm(highexposure~plus55pct,data=occupationdata1,
+          family=binomial)
+
+##full model
+reg5<-lm(mean_score100~medianage+womenpct+whitepct+blackpct+asianpct+
+           hispanicpct+medianwagefull+totalempfull,data=occupationdata1)
+reg6<-lm(mean_score100~plus55pct+womenpct+whitepct+blackpct+asianpct+
+           hispanicpct+medianwagefull+totalempfull,data=occupationdata1)
+reg7<-glm(highexposure~medianage+womenpct+whitepct+blackpct+asianpct+
+           hispanicpct+medianwagefull+totalempfull,data=occupationdata1,
+          family=binomial)
+reg8<-glm(highexposure~plus55pct+womenpct+whitepct+blackpct+asianpct+
+           hispanicpct+medianwagefull+totalempfull,data=occupationdata1,
+          family=binomial)
+
+##hierarchical model using "description_1d" as group variable
+reg9<-lmer(mean_score100 ~ medianage + (1|description_1d)+womenpct+whitepct+blackpct+asianpct+
+           hispanicpct+medianwagefull+totalempfull, data = occupationdata1)
+reg10<-lmer(mean_score100 ~ plus55pct + (1|description_1d)+womenpct+whitepct+blackpct+asianpct+
+           hispanicpct+medianwagefull+totalempfull, data = occupationdata1)
+reg11<-glmer(highexposure ~ medianage + (1|description_1d)+womenpct+whitepct+blackpct+asianpct+
+           hispanicpct+medianwagefull+totalempfull, data = occupationdata1,
+           family = binomial(link = "logit"))
+reg12<-glmer(highexposure ~ plus55pct + (1|description_1d)+womenpct+whitepct+blackpct+asianpct+
+           hispanicpct+medianwagefull+totalempfull, data = occupationdata1,
+           family = binomial(link = "logit"))
+```
+
+## Stargazer Output
+
+```{r}
+stargazer(reg1,reg2,reg3,reg4,
+          title="Aging and Automation, Base Models (N=704)",
+          type="html",
+          digits=2,
+          out="regressionbase.htm",
+          dep.var.labels = c("Automation Score", "High Score, binary"),
+          column.separate=c(2,2),
+          covariate.labels = c("Median Age", "Age 55+ (%)"),
+          omit.stat = "n"
+          )
+```
+
+
+```{r}
+stargazer(reg5,reg6,reg7,reg8,
+          title="Aging and Automation, Full Models (N=704)",
+          type="html",
+          digits=2,
+          out="regressionfull.htm",
+          dep.var.labels = c("Automation Score", "High Score, binary"),
+          column.separate=c(2,2),
+          covariate.labels = c("Median Age", "Age 55+ (%)", 
+                               "Women (%)", "White (%)", "Black (%)", "Asian (%)", 
+                               "Hispanic (%)", "Median Wage (Full-time)", 
+                               "Total Employees (Full-time)"),
+          omit.stat = "n"
+          )
+```
+
+```{r}
+stargazer(reg9,reg10,reg11,reg12,
+           title="Aging and Automation, Full Models (N=704)",
+          type="html",
+          digits=2,
+          out="regressionhierarchical.htm",
+          dep.var.labels = c("Automation Score", "High Score, binary"),
+          column.separate=c(2,2),
+          covariate.labels = c("Median Age", "Age 55+ (%)", 
+                               "Women (%)", "White (%)", "Black (%)", "Asian (%)", 
+                               "Hispanic (%)", "Median Wage (Full-time)", 
+                               "Total Employees (Full-time)"),
+          omit.stat = "n")
+```
+
+
+```{r}
+# Define custom variable names
+custom_names <- c(
+  "Mean Automation Score", "High Exposure", "Median Age", "Age 55+ (%)", 
+  "Women (%)", "White (%)", "Black (%)", "Asian (%)", 
+  "Hispanic (%)", "Median Wage (Full-time)", "Total Employees (Full-time)"
+)
+stargazer(descriptive,
+          title="Descriptive Statistics",
+          type="html",
+          digits=2,
+          covariate.labels = custom_names,
+          out="descriptive.htm")
+```
+,
+          out="descriptive.htm"
+
+```{r}
+# Define custom variable names
+custom_names <- c(
+  "Mean Automation Score", "High Exposure", "Median Age", "Age 55+ (%)", 
+  "Women (%)", "White (%)", "Black (%)", "Asian (%)", 
+  "Hispanic (%)", "Median Wage (Full-time)", "Total Employees (Full-time)"
+)
+
+descriptivetable<-descriptive %>%
+  summarise(across(everything(), list(
+    N = ~n(),
+    Mean = ~mean(., na.rm = TRUE),
+    SD = ~sd(., na.rm = TRUE),
+    Min = ~min(., na.rm = TRUE),
+    Max = ~max(., na.rm = TRUE)
+  ))) %>%
+  pivot_longer(everything(), names_to = c("variable", ".value"), names_pattern = "(.*)_(.*)") %>%
+  mutate(variable = custom_names) %>%
+  rename("Variable" = variable) %>%
+  knitr::kable(digits = 2, caption = "Descriptive Statistics")
+
+# Create HTML table
+#html_table <- knitr::kable(descriptivetable,format="html", caption="Descriptive Statistics")
+descriptivetable
+```
+
